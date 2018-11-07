@@ -22,6 +22,8 @@ func main() {
         From: "me@server.name", // do not add < > or name in quotes
         Subject: "A simple email",
         Body: "Plain text email body. HTML not yet supported, but send a PR!",
+
+        WaitTime: 100 // Set timeout as 100 Milliseconds
     }
 
     err := msg.Send()
