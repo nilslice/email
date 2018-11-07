@@ -17,14 +17,20 @@ import (
 )
 
 func main() {
+    // Option. Context for set timeout. Default timeout value is 5 seconds.
+	timeout := 800
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Millisecond)
+    defer cancel()
+    
     msg := email.Message{
         To: "you@server.name", // do not add < > or name in quotes
         From: "me@server.name", // do not add < > or name in quotes
         Subject: "A simple email",
         Body: "Plain text email body. HTML not yet supported, but send a PR!",
-
-        WaitTime: 100 // Set timeout as 100 Milliseconds
     }
+
+    // Option. Context for set timeout. Default timeout value is 5 seconds.
+	email.SendContext(ctx)
 
     err := msg.Send()
     if err != nil {

@@ -1,6 +1,7 @@
 package email
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/smtp"
@@ -14,14 +15,17 @@ type Message struct {
 	From    string
 	Subject string
 	Body    string
-
-	WaitTime int
 }
 
 var (
-	ports    = []int{25, 2525, 587}
-	waitTime = 15000
+	ports   = []int{25, 2525, 587}
+	dialCtx context.Context
 )
+
+// SendContext : Set context
+func SendContext(ctx context.Context) {
+	dialCtx = ctx
+}
 
 // Send sends a message to recipient(s) listed in the 'To' field of a Message
 func (m Message) Send() error {
@@ -35,8 +39,11 @@ func (m Message) Send() error {
 		return err
 	}
 
-	if m.WaitTime > 0 {
-		waitTime = m.WaitTime
+	if dialCtx == nil {
+		// ctx = context.Background() // Cause long wait time
+		ctx, cancel := context.WithTimeout(context.Background(), 5000*time.Millisecond)
+		defer cancel()
+		dialCtx = ctx
 	}
 
 	c, err := newClient(addrs, ports)
@@ -52,13 +59,15 @@ func (m Message) Send() error {
 	return nil
 }
 
-// Modified smtp.Dial
-func dialTimeout(addr string, timeout int) (*smtp.Client, error) {
-	conn, err := net.DialTimeout("tcp", addr, time.Duration(timeout)*time.Millisecond)
+func dialTimeout(addr string) (*smtp.Client, error) {
+	var d net.Dialer
+
+	conn, err := d.DialContext(dialCtx, "tcp", addr)
 	if err != nil {
 		return nil, err
 	}
 	host, _, _ := net.SplitHostPort(addr)
+
 	return smtp.NewClient(conn, host)
 }
 
@@ -67,7 +76,7 @@ func newClient(mx []*net.MX, ports []int) (*smtp.Client, error) {
 		for j := range ports {
 			server := strings.TrimSuffix(mx[i].Host, ".")
 			hostPort := fmt.Sprintf("%s:%d", server, ports[j])
-			client, err := dialTimeout(hostPort, waitTime)
+			client, err := dialTimeout(hostPort)
 			if err != nil {
 				if j == len(ports)-1 {
 					return nil, err
@@ -80,7 +89,8 @@ func newClient(mx []*net.MX, ports []int) (*smtp.Client, error) {
 		}
 	}
 
-	return nil, fmt.Errorf("Couldn't connect to servers %v on any common port.", mx)
+	// Remove punctuation - error strings should not be capitalized or end with punctuation
+	return nil, fmt.Errorf("Couldn't connect to servers %v on any common port", mx)
 }
 
 func send(m Message, c *smtp.Client) error {
