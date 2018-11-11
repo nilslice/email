@@ -6,10 +6,9 @@ import (
 	"net"
 	"net/smtp"
 	"strings"
-	"time"
 )
 
-// Message creates a email to be sent
+// Message creates a email to be sent.
 type Message struct {
 	To      string
 	From    string
@@ -18,17 +17,21 @@ type Message struct {
 }
 
 var (
-	ports   = []int{25, 2525, 587}
-	dialCtx context.Context
+	ports = []int{25, 2525, 587}
 )
 
-// SendContext : Set context
-func SendContext(ctx context.Context) {
-	dialCtx = ctx
+// Send sends a message to recipient(s) listed in the 'To' field of a Message.
+func (m Message) Send() error {
+	return m.send(context.Background())
 }
 
-// Send sends a message to recipient(s) listed in the 'To' field of a Message
-func (m Message) Send() error {
+// SendWithContext sends sends a message to recipient(s) listed in the 'To'
+// field of a Message, is context-aware.
+func (m Message) SendWithContext(ctx context.Context) error {
+	return m.send(ctx)
+}
+
+func (m Message) send(ctx context.Context) error {
 	if !strings.Contains(m.To, "@") {
 		return fmt.Errorf("Invalid recipient address: <%s>", m.To)
 	}
@@ -39,14 +42,7 @@ func (m Message) Send() error {
 		return err
 	}
 
-	if dialCtx == nil {
-		// ctx = context.Background() // Cause long wait time
-		ctx, cancel := context.WithTimeout(context.Background(), 5000*time.Millisecond)
-		defer cancel()
-		dialCtx = ctx
-	}
-
-	c, err := newClient(addrs, ports)
+	c, err := newClient(ctx, addrs, ports)
 	if err != nil {
 		return err
 	}
@@ -59,24 +55,27 @@ func (m Message) Send() error {
 	return nil
 }
 
-func dialTimeout(addr string) (*smtp.Client, error) {
+func dialTimeout(ctx context.Context, addr string) (*smtp.Client, error) {
 	var d net.Dialer
 
-	conn, err := d.DialContext(dialCtx, "tcp", addr)
+	conn, err := d.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return nil, err
 	}
-	host, _, _ := net.SplitHostPort(addr)
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil, err
+	}
 
 	return smtp.NewClient(conn, host)
 }
 
-func newClient(mx []*net.MX, ports []int) (*smtp.Client, error) {
+func newClient(ctx context.Context, mx []*net.MX, ports []int) (*smtp.Client, error) {
 	for i := range mx {
 		for j := range ports {
 			server := strings.TrimSuffix(mx[i].Host, ".")
 			hostPort := fmt.Sprintf("%s:%d", server, ports[j])
-			client, err := dialTimeout(hostPort)
+			client, err := dialTimeout(ctx, hostPort)
 			if err != nil {
 				if j == len(ports)-1 {
 					return nil, err
@@ -89,8 +88,7 @@ func newClient(mx []*net.MX, ports []int) (*smtp.Client, error) {
 		}
 	}
 
-	// Remove punctuation - error strings should not be capitalized or end with punctuation
-	return nil, fmt.Errorf("Couldn't connect to servers %v on any common port", mx)
+	return nil, fmt.Errorf("couldn't connect to servers %v on any common port", mx)
 }
 
 func send(m Message, c *smtp.Client) error {
