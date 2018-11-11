@@ -12,11 +12,13 @@ keys from a third-party just to send something like an account recovery email.
 package main
 
 import (
+    "context"
     "fmt"
+    
     "github.com/nilslice/email"
 )
 
-func main() {
+func main() {    
     msg := email.Message{
         To: "you@server.name", // do not add < > or name in quotes
         From: "me@server.name", // do not add < > or name in quotes
@@ -25,6 +27,13 @@ func main() {
     }
 
     err := msg.Send()
+    if err != nil {
+        fmt.Println(err)
+    }
+
+    // or with context-aware API
+    ctx := context.WithTimeout(context.Background(), time.Second * 3)
+    err = msg.SendWithContext(ctx)
     if err != nil {
         fmt.Println(err)
     }

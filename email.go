@@ -1,13 +1,14 @@
 package email
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/smtp"
 	"strings"
 )
 
-// Message creates a email to be sent
+// Message creates a email to be sent.
 type Message struct {
 	To      string
 	From    string
@@ -19,8 +20,18 @@ var (
 	ports = []int{25, 2525, 587}
 )
 
-// Send sends a message to recipient(s) listed in the 'To' field of a Message
+// Send sends a message to recipient(s) listed in the 'To' field of a Message.
 func (m Message) Send() error {
+	return m.send(context.Background())
+}
+
+// SendWithContext sends sends a message to recipient(s) listed in the 'To'
+// field of a Message, is context-aware.
+func (m Message) SendWithContext(ctx context.Context) error {
+	return m.send(ctx)
+}
+
+func (m Message) send(ctx context.Context) error {
 	if !strings.Contains(m.To, "@") {
 		return fmt.Errorf("Invalid recipient address: <%s>", m.To)
 	}
@@ -31,7 +42,7 @@ func (m Message) Send() error {
 		return err
 	}
 
-	c, err := newClient(addrs, ports)
+	c, err := newClient(ctx, addrs, ports)
 	if err != nil {
 		return err
 	}
@@ -44,12 +55,27 @@ func (m Message) Send() error {
 	return nil
 }
 
-func newClient(mx []*net.MX, ports []int) (*smtp.Client, error) {
+func dialTimeout(ctx context.Context, addr string) (*smtp.Client, error) {
+	var d net.Dialer
+
+	conn, err := d.DialContext(ctx, "tcp", addr)
+	if err != nil {
+		return nil, err
+	}
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil, err
+	}
+
+	return smtp.NewClient(conn, host)
+}
+
+func newClient(ctx context.Context, mx []*net.MX, ports []int) (*smtp.Client, error) {
 	for i := range mx {
 		for j := range ports {
 			server := strings.TrimSuffix(mx[i].Host, ".")
 			hostPort := fmt.Sprintf("%s:%d", server, ports[j])
-			client, err := smtp.Dial(hostPort)
+			client, err := dialTimeout(ctx, hostPort)
 			if err != nil {
 				if j == len(ports)-1 {
 					return nil, err
@@ -62,7 +88,7 @@ func newClient(mx []*net.MX, ports []int) (*smtp.Client, error) {
 		}
 	}
 
-	return nil, fmt.Errorf("Couldn't connect to servers %v on any common port.", mx)
+	return nil, fmt.Errorf("couldn't connect to servers %v on any common port", mx)
 }
 
 func send(m Message, c *smtp.Client) error {
