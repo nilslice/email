@@ -12,16 +12,13 @@ keys from a third-party just to send something like an account recovery email.
 package main
 
 import (
+    "context"
     "fmt"
+    
     "github.com/nilslice/email"
 )
 
-func main() {
-    // Option. Context for set timeout. Default timeout value is 5 seconds.
-	timeout := 800
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Millisecond)
-    defer cancel()
-    
+func main() {    
     msg := email.Message{
         To: "you@server.name", // do not add < > or name in quotes
         From: "me@server.name", // do not add < > or name in quotes
@@ -29,10 +26,14 @@ func main() {
         Body: "Plain text email body. HTML not yet supported, but send a PR!",
     }
 
-    // Option. Context for set timeout. Default timeout value is 5 seconds.
-	email.SendContext(ctx)
-
     err := msg.Send()
+    if err != nil {
+        fmt.Println(err)
+    }
+
+    // or with context-aware API
+    ctx := context.WithTimeout(context.Background(), time.Second * 3)
+    err = msg.SendWithContext(ctx)
     if err != nil {
         fmt.Println(err)
     }
